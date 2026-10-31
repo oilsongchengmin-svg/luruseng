@@ -417,6 +417,21 @@
   <div class="foot2"><button type="button" class="pill" data-close>取消</button><button type="button" class="pill primary" id="askok"></button></div>
 </div></dialog>
 
-<script type="module" src="app.js"></script>
+<script>
+  // 每次发布，GitHub 给所有文件同一个时间戳：拿它当版本号挂在每个模块网址后面。
+  // 不然刚更新那十分钟，浏览器会拿新页面配缓存里的旧代码（按钮在、点了没反应）。
+  (() => {
+    const v = Date.parse(document.lastModified) || Date.now();
+    const mods = ['app', 'core', 'sheets', 'store', 'image', 'book', 'engine', 'pair', 'inbox'];
+    const map = document.createElement('script');
+    map.type = 'importmap';
+    map.textContent = JSON.stringify({ imports: Object.fromEntries(mods.map((m) => [`./${m}.js`, `./${m}.js?v=${v}`])) });
+    document.currentScript.after(map);
+    const s = document.createElement('script');
+    s.type = 'module';
+    s.src = `app.js?v=${v}`;
+    map.after(s);
+  })();
+</script>
 </body>
 </html>

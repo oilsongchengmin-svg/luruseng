@@ -842,7 +842,9 @@ def main():
             if not relay_url:
                 print('    （没有中转站代码，手机传图不测）')
                 return
-            init = f"window.LURUSENG_RELAY = '{relay_url}';"
+            # 顺带装成锁了屏：页面看不见的时候 img.decode() 一直不回来（Song 电脑上真遇到过），两头照样得干完
+            init = (f"window.LURUSENG_RELAY = '{relay_url}';"
+                    "HTMLImageElement.prototype.decode = function () { return new Promise(() => {}); };")
             pc = browser.new_context(viewport={'width': 1280, 'height': 860}, accept_downloads=True, locale='zh-CN')
             ph = browser.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
             for c in (pc, ph):

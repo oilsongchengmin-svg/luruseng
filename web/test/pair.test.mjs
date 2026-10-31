@@ -100,3 +100,21 @@ test('inbox: tells the phone how it is going, at most every 1.5 s, the last word
   assert.deepEqual(relay.said, ['开工了 0/3', '干完了：成功 3 · 失败 0']);
   ib.close();
 });
+
+test('pages load every module through the versioned import map (a new module cannot be left out)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const dir = new URL('../', import.meta.url);
+  const deps = (entry, seen = new Set()) => {                     // entry 能牵出来的所有模块
+    if (seen.has(entry)) return seen;
+    seen.add(entry);
+    const src = readFileSync(new URL(`${entry}.js`, dir), 'utf8');
+    for (const m of src.matchAll(/from '\.\/([\w-]+)\.js'/g)) deps(m[1], seen);
+    return seen;
+  };
+  for (const [page, entry] of [['index.html', 'app'], ['send.html', 'send']]) {
+    const html = readFileSync(new URL(page, dir), 'utf8');
+    const listed = new Set(JSON.parse(html.match(/const mods = (\[[^\]]*\])/)[1].replace(/'/g, '"')));
+    assert.deepEqual([...deps(entry)].sort(), [...listed].sort(), page);
+    assert.ok(html.includes(`s.src = \`${entry}.js?v=\${v}\``) && !html.includes(`src="${entry}.js"`), page);
+  }
+});

@@ -34,8 +34,12 @@ async function imgFrom(blob) {
   try {
     const img = new Image();
     img.decoding = 'async';
+    const loaded = new Promise((ok, bad) => { img.onload = () => ok(); img.onerror = () => bad(new Error('这张照片打不开')); });
     img.src = url;
-    await img.decode();                      // <img> 按 EXIF 方向转正（跟电脑版 exif_transpose 一样）
+    // 页面看不见的时候（锁屏、窗口最小化、切到后台）decode() 可能一直不回来：等到 load 就行，画的时候浏览器自己会解码
+    const decoded = img.decode();
+    for (const p of [loaded, decoded]) p.catch(() => {});   // 输的那个后来再出错，别冒成没人接的报错
+    await Promise.race([loaded, decoded]);       // <img> 按 EXIF 方向转正（跟电脑版 exif_transpose 一样）
     return img;
   } finally {
     setTimeout(() => URL.revokeObjectURL(url), 0);
