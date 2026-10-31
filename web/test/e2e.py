@@ -10,6 +10,9 @@ import json
 import os
 import re
 import shutil
+import signal
+import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -33,6 +36,7 @@ from test_kb import company_book  # noqa: E402
 from test_formats import to_xls  # noqa: E402
 
 K1, K2 = 'AIzaKEY1_mock', 'AIzaKEY2_mock'
+RELAY_DIR = os.environ.get('RELAY_DIR') or os.path.join(os.path.dirname(ROOT), 'luruseng-relay')   # 中转站代码（QIANSHOULAB/luruseng-relay）
 SHOTS = sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp(prefix='luruseng-shots-')
 os.makedirs(SHOTS, exist_ok=True)
 WORK = tempfile.mkdtemp(prefix='luruseng-e2e-')
@@ -71,6 +75,30 @@ def serve(root):
     srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(Quiet, directory=root))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
+
+
+def start_relay():
+    """本地起一个真的中转站（wrangler dev，不用 Cloudflare 账号）。没有中转站代码就返回 (None, None)，手机传图那项跳过。"""
+    if not os.path.exists(os.path.join(RELAY_DIR, 'wrangler.jsonc')) or not os.path.isdir(os.path.join(RELAY_DIR, 'node_modules')):
+        assert not os.environ.get('E2E_NEED_RELAY'), f'没有中转站代码：{RELAY_DIR}（先 npm ci）'
+        return None, None
+    with socket.socket() as so:
+        so.bind(('127.0.0.1', 0))
+        port = so.getsockname()[1]
+    proc = subprocess.Popen(['npx', 'wrangler', 'dev', '--ip', '127.0.0.1', '--port', str(port), '--var', 'ALLOW_ORIGINS:*',
+                             '--persist-to', tempfile.mkdtemp(prefix='luruseng-relay-')], cwd=RELAY_DIR,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                            env={**os.environ, 'WRANGLER_SEND_METRICS': 'false', 'CI': '1'})
+    url = f'http://127.0.0.1:{port}'
+    for _ in range(300):
+        try:
+            with urllib.request.urlopen(url + '/ping', timeout=2) as r:
+                if r.status == 200:
+                    return proc, url
+        except Exception:
+            time.sleep(0.3)
+    os.killpg(proc.pid, signal.SIGTERM)
+    raise AssertionError('中转站（wrangler dev）没起来')
 
 
 def python_book(images, spec_name=None):
@@ -142,6 +170,7 @@ def main():
     engine.RETRY_WAITS = [0.01, 0.01, 0.01]
     mock_server.STATE.update(delay=0)
     errors = []
+    relay_proc, relay_url = start_relay()
 
     def gemini(route, request):
         if request.method == 'OPTIONS':
@@ -809,6 +838,79 @@ def main():
                 k.close()
 
         @step
+        def phone_sends_and_pc_starts_by_itself():
+            if not relay_url:
+                print('    （没有中转站代码，手机传图不测）')
+                return
+            init = f"window.LURUSENG_RELAY = '{relay_url}';"
+            pc = browser.new_context(viewport={'width': 1280, 'height': 860}, accept_downloads=True, locale='zh-CN')
+            ph = browser.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+            for c in (pc, ph):
+                c.add_init_script(init)
+
+            def opened(ctx, url, wait_log=True):
+                pg = ctx.new_page()
+                pg.on('pageerror', lambda e: errors.append(f'phone-test pageerror: {e}'))
+                pg.on('console', lambda m: errors.append(f'phone-test console.{m.type}: {m.text}')
+                      if m.type == 'error' and 'Failed to load resource' not in m.text else None)
+                offline(pg)
+                pg.goto(url)
+                if wait_log:
+                    pg.wait_for_function('() => document.querySelectorAll("#log p").length >= 1')
+                return pg
+
+            def logs_of(pg):
+                return '\n'.join(pg.eval_on_selector_all('#log p', 'ps => ps.map(p => p.textContent)'))
+
+            try:
+                a = opened(pc, base)
+                assert a.is_visible('#phone') and '手机扫个码' in a.inner_text('#phinttxt')
+                a.fill('#key1', K1)
+                a.click('#phone')
+                a.wait_for_selector('#dlg-phone[open]')
+                a.wait_for_function('() => !!document.querySelector("#qr svg")')
+                link = a.get_attribute('#qr', 'data-link')
+                assert '/web/send.html#r=' in link and '&k=' in link, link
+                room = link.split('#r=')[1].split('&')[0]
+                a.wait_for_function('() => document.querySelector("#pstate").textContent.includes("已配对")', timeout=15000)
+                a.screenshot(path=os.path.join(SHOTS, '10-手机传图二维码.png'))
+                a.click('#dlg-phone [data-close]')
+
+                b = opened(ph, link, wait_log=False)                            # 手机扫码打开的那一页
+                b.wait_for_function('() => document.querySelector("#pcstate").textContent.includes("电脑在线")', timeout=15000)
+                b.set_input_files('#files', make_images(os.path.join(WORK, 'ph'), 3, start=170))
+                b.wait_for_function('() => document.querySelector("#st").textContent.includes("电脑收齐 3 张")', timeout=30000)
+                a.wait_for_function('() => document.querySelector("#status").textContent.startsWith("干完")', timeout=60000)
+                text = logs_of(a)
+                assert '📱 手机传来 3 张，收齐了，开工' in text, text
+                assert a.inner_text('#status').replace('\n', '') == '干完：成功 3 · 失败 0', a.inner_text('#status')
+                b.wait_for_function('() => document.querySelector("#say").textContent.includes("干完了，成功 3 · 失败 0")', timeout=15000)
+                b.screenshot(path=os.path.join(SHOTS, '10-手机传完.png'))
+                run_id = a.evaluate("""() => new Promise((ok) => { const r = indexedDB.open('luruseng-web');
+                    r.onsuccess = () => { const q = r.result.transaction('kv').objectStore('kv').get('cfg'); q.onsuccess = () => ok(q.result.lastRun); }; })""")
+                rows = a.evaluate("""id => new Promise((ok) => { const r = indexedDB.open('luruseng-web');
+                    r.onsuccess = () => { const q = r.result.transaction('runs').objectStore('runs').get(id); q.onsuccess = () => ok(q.result.rows.map(x => [x.no, x.values.opr_no])); }; })""", run_id)
+                assert [[n, str(v)] for n, v in rows] == [[1, '970'], [2, '971'], [3, '972']], rows   # 按拍摄顺序编号，一张不少
+                left = a.evaluate(f"fetch('{relay_url}/r/{room}/items').then(r => r.json())")
+                assert left == [], left                                                # 取走就删
+                if a.is_visible('#dlg-view'):
+                    a.click('#vclose')
+
+                a.close()                                                              # 电脑关了：照片先存在中转站
+                b.wait_for_function('() => document.querySelector("#pcstate").textContent.includes("电脑没开")', timeout=15000)
+                b.set_input_files('#files', make_images(os.path.join(WORK, 'ph2'), 2, start=175))
+                b.wait_for_function('() => document.querySelector("#st").textContent.includes("送出 2/2")', timeout=30000)
+                assert '照片在中转站等着' in b.inner_text('#say'), b.inner_text('#say')
+                a = opened(pc, base)                                                   # 电脑再打开：自己取、自己干
+                a.wait_for_function('() => document.querySelector("#status").textContent.startsWith("干完")', timeout=60000)
+                assert '📱 手机传来 2 张，收齐了，开工' in logs_of(a), logs_of(a)
+                b.wait_for_function('() => document.querySelector("#st").textContent.includes("电脑收齐 2 张")', timeout=15000)
+                assert a.evaluate(f"fetch('{relay_url}/r/{room}/items').then(r => r.json())") == []
+            finally:
+                pc.close()
+                ph.close()
+
+        @step
         def phone_layout():
             m = browser.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
             p = m.new_page()
@@ -852,7 +954,7 @@ def main():
                    database_fixes_confusable_letters, edit_cells_in_viewer, btmp_copies_total, names_dialog, own_category_matches_desktop_book,
                    bad_key_stops_and_keeps_photos, stop_button_marks_unfinished, photos_of_all_kinds,
                    title_on_the_right_turns_upright_number_in_top_right, settings_backup_restore_and_forget_keys, delete_a_batch, progress_counts_up_and_says_go_slack,
-                   killed_midway_comes_back_and_finishes, phone_layout):
+                   killed_midway_comes_back_and_finishes, phone_sends_and_pc_starts_by_itself, phone_layout):
             if os.environ.get('E2E_ONLY') and fn.__name__ not in os.environ['E2E_ONLY'].split(','):
                 continue                      # 只跑某几项：E2E_ONLY=项名,项名
             try:
@@ -864,6 +966,8 @@ def main():
                 raise
         page.screenshot(path=os.path.join(SHOTS, '8-最后.png'))
         browser.close()
+    if relay_proc:
+        os.killpg(relay_proc.pid, signal.SIGTERM)
     bad = [e for e in errors if 'favicon' not in e]
     assert not bad, '\n'.join(bad)
     print(f'全过：{len(passed)} 项 · 截图在 {SHOTS}')

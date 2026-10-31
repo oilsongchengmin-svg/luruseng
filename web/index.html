@@ -74,6 +74,15 @@
   .drop.has { color: var(--text); border-style: solid; }
   .drop.over, body.dragging .drop { border-color: var(--blue); background: #F0F6FD; color: var(--blue); }
   .drop .clear { color: var(--link); flex: none; font-size: 13.5px; }
+  .phint { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--grey); font-size: 13.5px; }
+  .phint .txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .phint .dot { width: 9px; height: 9px; border-radius: 50%; background: #C7C7CC; flex: none; }
+  .phint .dot.on { background: var(--green); }
+  .qr { width: 248px; height: 248px; margin: 4px auto 0; display: grid; place-items: center; color: var(--grey); font-size: 13.5px; text-align: center; }
+  .qr svg { width: 100%; height: 100%; display: block; }
+  .pstate .dot { width: 9px; height: 9px; border-radius: 50%; background: #C7C7CC; flex: none; }
+  .pstate .dot.on { background: var(--green); }
+  .pstate { display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--grey); font-size: 13.5px; margin-top: 10px; }
 
   .pill {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 14px;
@@ -195,6 +204,7 @@
   .panel .cell-ed .btns .pill:not(.primary) { background: #fff; border-color: var(--field-line); }
   .empty { padding: 30px; text-align: center; }
 
+  @media (pointer: coarse) and (max-width: 860px) { .pc-only { display: none !important; } }   /* 手机本身就是传图的那头 */
   @media (max-width: 860px) {
     .app { grid-template-columns: minmax(0, 1fr); padding: 10px; gap: 10px; }
     .logcard { min-height: 160px; }
@@ -243,6 +253,7 @@
   <symbol id="i-key" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="5.2" cy="10" r="3.4"/><path d="M8.6 10h9.2M15.6 10v3M17.8 10v2.2"/></g></symbol>
   <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
   <symbol id="i-photo" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2" y="4.2" width="16" height="12.4" rx="2"/><circle cx="7" cy="8.6" r="1.5"/><path d="m2.6 14.6 4.6-4 3.4 3 2.4-2 4.4 3.8"/></g></symbol>
+  <symbol id="i-phone" viewBox="0 0 20 20"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="5.2" y="1.8" width="9.6" height="16.4" rx="2.2"/><path d="M8.6 15.4h2.8" stroke-linecap="round"/></g></symbol>
   <symbol id="i-check" viewBox="0 0 14 14"><path d="M2.5 7.3 5.6 10.3 11.6 3.8" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
 
@@ -266,6 +277,10 @@
       </div>
       <button type="button" class="pill side-btn" id="pick">选照片…</button>
       <input type="file" id="files" accept="image/*,.heic,.heif" multiple hidden>
+
+      <label for="phone" class="pc-only">手机</label>
+      <div class="phint pc-only" id="phint"><i class="dot" id="pdot"></i><span class="txt" id="phinttxt">手机扫个码，拍完一传，这边收齐自己开工</span></div>
+      <button type="button" class="pill side-btn pc-only" id="phone"><svg class="i"><use href="#i-phone"/></svg>手机传图</button>
 
       <label for="key1">钥匙 1</label>
       <input id="key1" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="贴进来">
@@ -383,6 +398,16 @@
     <div class="card panel" id="vpanel"></div>
   </div>
   <div class="card empty" id="vempty" hidden>还没有结果：先选照片，点「开始工作」干一批。</div>
+</div></dialog>
+
+<!-- 手机传图 -->
+<dialog id="dlg-phone"><div class="dcard" style="width:400px">
+  <h2>手机传图</h2><div class="sep1"></div>
+  <div class="qr" id="qr"></div>
+  <div class="pstate"><i class="dot" id="pdot2"></i><span id="pstate"></span></div>
+  <p class="para">用手机相机扫一下。拍完全选一传，这边收齐自己开工，你去摸鱼。
+扫过一次就记住了：手机上把那一页「添加到主屏幕」，以后点图标就传。</p>
+  <div class="foot2"><button type="button" class="pill" id="phonenew" style="margin-right:auto">换个码</button><button type="button" class="pill primary" data-close>好</button></div>
 </div></dialog>
 
 <!-- 删掉这批之前问一句 -->

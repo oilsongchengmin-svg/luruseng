@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>传图给电脑 · 录入僧</title>
+<meta name="apple-mobile-web-app-title" content="传图">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#F2F2F7">
+<meta name="robots" content="noindex">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%235AB4FF'/%3E%3Cstop offset='1' stop-color='%231E7BF2'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='15' fill='url(%23g)'/%3E%3Crect x='19' y='15' width='26' height='34' rx='4.5' fill='%23fff'/%3E%3Crect x='24' y='23' width='14' height='3' rx='1.5' fill='%232F8BF5'/%3E%3Crect x='24' y='30.5' width='14' height='3' rx='1.5' fill='%232F8BF5'/%3E%3Crect x='24' y='38' width='9' height='3' rx='1.5' fill='%232F8BF5'/%3E%3C/svg%3E">
+<style>
+  :root { --bg: #F2F2F7; --card: #fff; --line: #E5E5EA; --text: #1D1D1F; --grey: #6E6E73; --blue: #0071E3; --blue-off: #A6CBF3;
+          --green: #34C759; --red: #B3261E; --lift: 0 1px 2px rgba(0,0,0,.04), 0 6px 20px rgba(0,0,0,.045); }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.5;
+         font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 520px; margin: 0 auto; padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom)); }
+  h1 { font-size: 28px; margin: 8px 0 2px; letter-spacing: .02em; }
+  .sub { color: var(--grey); margin: 0 0 16px; }
+  .card { background: var(--card); border-radius: 14px; box-shadow: var(--lift); padding: 18px; }
+  .card + .card { margin-top: 12px; }
+  .pc { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #C7C7CC; flex: none; }
+  .dot.on { background: var(--green); }
+  .go { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; height: 56px; margin-top: 16px;
+        border: 0; border-radius: 12px; background: var(--blue); color: #fff; font: inherit; font-size: 18px; font-weight: 600; cursor: pointer; }
+  .go:active { background: #006EDB; }
+  .go:disabled { background: var(--blue-off); }
+  .go svg { width: 22px; height: 22px; }
+  .tip { color: var(--grey); font-size: 13.5px; margin: 10px 2px 0; }
+  .st { font-weight: 700; font-size: 22px; line-height: 1.3; }
+  .st b { color: var(--blue); font-size: 1.3em; margin: 0 .1em; }
+  .track { height: 12px; border-radius: 6px; background: #E5E5EA; overflow: hidden; margin-top: 12px; }
+  .track > div { height: 100%; width: 0; background: var(--blue); border-radius: 6px; transition: width .3s; }
+  .say { margin-top: 10px; color: var(--grey); font-size: 14.5px; min-height: 1.45em; }
+  .bad { color: var(--red); font-size: 14px; margin-top: 8px; white-space: pre-wrap; }
+  .foot { color: var(--grey); font-size: 12.5px; text-align: center; margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>传图给电脑</h1>
+  <p class="sub">录入僧 · 施主去玩，贫僧填表</p>
+
+  <div class="card" id="nopair" hidden>
+    <div class="st" style="font-size:19px">还没配对</div>
+    <p class="tip" style="font-size:15px">电脑上打开录入僧网页版，点「手机传图」，用手机相机扫那个二维码。</p>
+  </div>
+
+  <div id="paired" hidden>
+    <div class="card">
+      <div class="pc"><i class="dot" id="dot"></i><span id="pcstate">正在连中转站…</span></div>
+      <button type="button" class="go" id="pick">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M2.5 6.5h3l1.6-2.2h5.8l1.6 2.2h3v9.7h-15z"/><circle cx="10" cy="11" r="3.2"/></g></svg>拍照 / 选照片</button>
+      <input type="file" id="files" accept="image/*" multiple hidden>
+      <p class="tip" id="tip">拍完全选，点一下送过去。电脑收齐自己开工，你去摸鱼。</p>
+    </div>
+    <div class="card" id="prog" hidden>
+      <div class="st" id="st"></div>
+      <div class="track"><div id="bar"></div></div>
+      <div class="say" id="say"></div>
+      <div class="bad" id="bad"></div>
+    </div>
+    <p class="tip" id="home" style="text-align:center">在 Safari 里点「分享」→「添加到主屏幕」，以后点图标直接传，不用再扫。</p>
+  </div>
+
+  <div class="foot">照片在手机上加密了才发出去，中转站只存加密过的数据，电脑取走就删。</div>
+</div>
+<script type="module" src="send.js"></script>
+</body>
+</html>

@@ -8,5 +8,6 @@
 | `exceljs.min.js` | [exceljs 4.4.0](https://www.npmjs.com/package/exceljs/v/4.4.0) | 出表：带颜色、合并格子的 Excel | MIT |
 | `jszip.min.js` | [jszip 3.10.1](https://www.npmjs.com/package/jszip/v/3.10.1) | 编号照片打包下载 | MIT（或 GPL-3.0） |
 | `heic2any.min.js` | [heic2any 0.0.4](https://www.npmjs.com/package/heic2any/v/0.0.4) | 苹果的 HEIC 照片转成 JPG（浏览器自己不认时才加载） | MIT；里面带的 libheif 是 LGPL-3.0，源码见 [strukturag/libheif](https://github.com/strukturag/libheif) |
+| `qrcode.js` | [qrcode-generator 1.4.4](https://www.npmjs.com/package/qrcode-generator/v/1.4.4)（Kazuhiko Arase） | 「手机传图」的二维码 | MIT |
 
-换版本：`npm install 包名@版本`，把 `dist/` 下同名文件拷过来，跑一遍 `web/test/e2e.py`。
+换版本：`npm install 包名@版本`，把 `dist/` 下同名文件拷过来（qrcode-generator 在包的根目录），跑一遍 `web/test/e2e.py`。

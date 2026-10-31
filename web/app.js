@@ -5,10 +5,13 @@ import * as ST from './store.js';
 import * as I from './image.js';
 import * as B from './book.js';
 import { Engine } from './engine.js';
+import * as PR from './pair.js';
+import { Inbox } from './inbox.js';
 
 const $ = (s) => document.querySelector(s);
 const XLSX_LIB = new URL('./vendor/xlsx.full.min.js', import.meta.url).href;
 const JSZIP_LIB = new URL('./vendor/jszip.min.js', import.meta.url).href;
+const QR_LIB = new URL('./vendor/qrcode.js', import.meta.url).href;
 const CONTACT = ['oilsongchengmin', 'gmail.com'].join('@');
 const SETTINGS = [
   ['auto_open', '干完自动打开核对', '手动点「开始工作」干完后，自动打开核对，点格子就能改'],
@@ -19,6 +22,7 @@ const DEFAULTS = { category: C.BUILTIN, model: C.DEFAULT_MODEL, auto: false, aut
 const S = {
   st: null, cfg: { ...DEFAULTS }, cats: [], queue: [], seen: new Set(), eng: null, busy: false,
   fresh: 0, feeding: false, run: null,                    // run：正在干的这批（核对里看它，改的格子才不会被盖掉）
+  pair: null, inbox: null, phoneWaiting: false,           // 手机传图：配对、收图的长连接、手机传齐了等着开工
 };
 const two = (n) => String(n).padStart(2, '0');
 const nowIso = () => new Date().toISOString().slice(0, 19);
@@ -59,6 +63,7 @@ const M = { total: 0, done: 0, tLast: 0, gaps: [], timer: null };
 function slogan(text) { $('#slogan').textContent = text || ''; }
 function meterDraw() { $('#bar').style.width = `${(100 * C.meterFrac(M, Date.now())).toFixed(1)}%`; }
 function meterStart(total, done = 0, line = FISH) {      // done：接着干的那批，之前已经干完几张
+  phoneSay(`开工了 ${done}/${total}`, true);
   Object.assign(M, { total, done, tLast: Date.now(), gaps: [] });
   clearInterval(M.timer);
   M.timer = setInterval(meterDraw, 250);
@@ -77,6 +82,7 @@ function meterTick(d, t) {
   }
   M.total = t;
   status(`${d}/${t} 张`);
+  phoneSay(`干着呢 ${d}/${t}`);
   meterDraw();
 }
 function meterStop() { clearInterval(M.timer); M.timer = null; }
@@ -166,10 +172,10 @@ function later(fn) {                          // 一件一件来：手机内存�
   P.chain = p.catch(() => {});
   return p;
 }
-function stash(q) {
-  if (!canStash()) return;
+function stash(q) {                           // -> Promise：存好了（存不了也算完事）
+  if (!canStash()) return Promise.resolve();
   P.n++;
-  later(async () => {
+  return later(async () => {
     try {
       if (!S.queue.includes(q)) return;                   // 还没轮到就被清掉了
       const f = q.file, buf = await f.arrayBuffer();
@@ -478,6 +484,7 @@ async function start(auto = false, woke = false) {     // woke：打开页面时
     } else {
       status('查重…');
       bar(0, 0);
+      S.phoneWaiting = false;                    // 手机传齐等着的照片，这一批就带上了
       todoQ = await freshTodo();
       if (!todoQ.length) { log('列表里没有新照片，收工。'); halted = false; return; }
     }
@@ -508,7 +515,7 @@ async function start(auto = false, woke = false) {     // woke：打开页面时
 
     const base = total - items.length;             // 接着干的：之前已经干完（或者记过）几张
     eng = S.eng = new Engine({
-      keys: [k1, k2], model, spec, names, hints, log: (m) => { log(m); if (m.startsWith('⏸')) slogan(waitLine(m)); },
+      keys: [k1, k2], model, spec, names, hints, log: (m) => { log(m); if (m.startsWith('⏸')) { slogan(waitLine(m)); phoneSay(waitLine(m), true); } },
       prepare: (file, enhance) => exclusive(async () => I.prepare(await openFor(file, !enhance), enhance)),
       stampIt: (file, no, side) => exclusive(async () => I.stamp(await openFor(file, false), no, side)),
     });
@@ -553,6 +560,7 @@ async function start(auto = false, woke = false) {     // woke：打开页面时
         onBatch: saveRun,
       });
       if (res.stopped) log(res.stopped === '手动停止' ? '■ 已停止，没干完的下次接着干' : `■ 停工：${res.stopped}`);
+      if (res.stopped) phoneSay(res.stopped === '手动停止' ? '停了，有人在电脑上点了停止' : `停工了，${res.stopped}`, true);
     } else if (lost) {
       log(`⚠ 上回那批剩下的 ${lost} 张照片没存住（页面被关之前没来得及存）：重新选它们再干`);
     } else {
@@ -571,6 +579,7 @@ async function start(auto = false, woke = false) {     // woke：打开页面时
     bar(t.ok + t.failed, total);
     if (kept) status(`干完：成功 ${t.ok} · 失败 ${t.failed}`);
     slogan(t.ok && !halted ? DONE : '');
+    if (!halted && res) phoneSay(`干完了，成功 ${t.ok} · 失败 ${t.failed}，回电脑核对就好`, true);
     const more = extra && S.queue.some((q) => extra.has(q));
     if (kept && res && res.ok && !halted && !work.auto && !more && S.cfg.auto_open) openViewer(id);
   } catch (e) {
@@ -588,7 +597,7 @@ async function start(auto = false, woke = false) {     // woke：打开页面时
     if (extra && !halted && S.queue.some((q) => extra.has(q))) {
       log('▶ 上回那批干完了，接着干列表里别的照片（另开一本表）');
       setTimeout(() => start(auto), 500);
-    } else if (S.fresh && $('#auto').checked && S.queue.length) setTimeout(() => start(true), 500);
+    } else if (((S.fresh && $('#auto').checked) || (mine && S.phoneWaiting)) && S.queue.length) setTimeout(() => start(true), 500);
   }
 }
 function drop(q) {                               // 干完了（或者不用干）：从列表里拿掉，存的原照片也清掉
@@ -1101,6 +1110,84 @@ function setupViewer() {
   };
 }
 
+// ---------------------------------------------------------------- 手机传图（扫码配对，照片经中转站过来，收齐了自己开工）
+function phoneSay(text, now = false) { if (S.inbox) S.inbox.say(text, now); }
+
+function phoneState(state) {                    // 电脑这头的长连接：连上了没有
+  const on = state === 'on';
+  const text = !S.pair ? '手机扫个码，拍完一传，这边收齐自己开工'
+    : on ? '已配对：手机一传，这边就收'
+    : state === 'connecting' ? '正在连中转站…'
+    : '中转站连不上（断网了，或者公司网拦了），过一会儿自己再连';
+  for (const [dot, txt] of [['#pdot', '#phinttxt'], ['#pdot2', '#pstate']]) {
+    $(dot).classList.toggle('on', on);
+    $(txt).textContent = text;
+  }
+}
+
+async function phoneFile(file, info) {          // 手机传来一张：跟选照片一样进列表、先存进浏览器（存好了才让中转站删）
+  const id = `${file.name}|${file.size}|${file.lastModified}`;
+  if (S.seen.has(id)) return;
+  S.seen.add(id);
+  const q = { file, id, phone: info.batch };
+  S.queue.push(q);
+  if (S.busy) S.fresh++;
+  refreshQueue(S.busy || $('#status').textContent.startsWith('干完'));
+  if (info.seq === 1 || info.seq === info.total) log(`📱 手机传来第 ${info.seq}/${info.total} 张：${file.name}`);
+  await stash(q);
+}
+
+function phoneBatch(batch, got, total) {        // 手机这一趟收齐了（或者传到一半两分钟没动静）：开工
+  log(got >= total ? `📱 手机传来 ${got} 张，收齐了，开工` : `📱 手机这趟只到了 ${got}/${total} 张，两分钟没动静，先干收到的`);
+  S.phoneWaiting = true;
+  if (!S.busy) start(true);
+}
+
+function openInbox() {
+  if (S.inbox) S.inbox.close();
+  S.inbox = new Inbox(S.pair, { onFile: phoneFile, onBatch: phoneBatch, onState: phoneState, log });
+  S.inbox.open();
+}
+
+async function drawQr() {
+  const box = $('#qr');
+  const href = PR.link(location.href, S.pair);
+  box.dataset.link = href;
+  try {
+    const qrcode = await I.loadScript(QR_LIB, 'qrcode');
+    const qr = qrcode(0, 'M');
+    qr.addData(href);
+    qr.make();
+    box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 3, scalable: true, alt: '手机传图二维码' });
+  } catch (e) {
+    box.textContent = `二维码出不来：${e.message}`;
+  }
+}
+
+async function newPairing() {
+  S.pair = PR.newPair();
+  await S.st.put('kv', 'phone', S.pair);
+  openInbox();
+}
+
+function setupPhone() {
+  phoneState('off');
+  $('#phone').onclick = async () => {
+    if (!PR.valid(S.pair)) await newPairing();
+    await drawQr();
+    phoneState(S.inbox ? S.inbox.state : 'off');
+    $('#dlg-phone').showModal();
+  };
+  $('#phonenew').onclick = async () => {
+    const dlg = $('#dlg-phone');
+    dlg.close();
+    const yes = await ask('换个二维码？', '换了以后，以前扫过的手机就传不过来了，得重新扫一下。', '换');
+    if (yes) { await newPairing(); log('换了个手机传图的二维码：以前扫过的手机得重新扫'); }
+    await drawQr();
+    dlg.showModal();
+  };
+}
+
 // ---------------------------------------------------------------- 开机
 async function boot() {
   S.st = await ST.openStore();
@@ -1142,6 +1229,9 @@ async function boot() {
   const back = await restore();                    // 上回的照片还在浏览器里：放回列表
   if (back) refreshQueue();
   await wakeUp(back);                              // 上回干到一半被关了：自己接着干
+  setupPhone();
+  const pair = await S.st.get('kv', 'phone').catch(() => null);   // 配过对：挂上长连接等手机传图
+  if (PR.valid(pair)) { S.pair = pair; openInbox(); }
 }
 
 boot().catch((e) => { log(`✗ 打不开：${e.name || 'Error'}：${e.message}`); console.error(e); });

@@ -14,6 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Phone relay (QIANSHOULAB/luruseng-relay), run locally by the e2e
+        uses: actions/checkout@v4
+        with:
+          repository: QIANSHOULAB/luruseng-relay
+          path: relay
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -24,10 +29,16 @@ jobs:
         run: |
           pip install -r requirements.txt pytest xlwt playwright
           python -m playwright install --with-deps chromium
+      - name: Relay deps
+        run: npm ci
+        working-directory: relay
       - name: Unit tests (same rules as the desktop)
-        run: node --test web/test/core.test.mjs web/test/engine.test.mjs web/test/sheets.test.mjs
+        run: node --test web/test/core.test.mjs web/test/engine.test.mjs web/test/sheets.test.mjs web/test/pair.test.mjs
       - name: Click through in a real browser; Excel must match the desktop's cell by cell
         run: python web/test/e2e.py shots
+        env:
+          RELAY_DIR: relay
+          E2E_NEED_RELAY: '1'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
