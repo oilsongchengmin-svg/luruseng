@@ -876,10 +876,11 @@ def main():
                 room = link.split('#r=')[1].split('&')[0]
                 a.wait_for_function('() => document.querySelector("#pstate").textContent.includes("已配对")', timeout=15000)
                 a.screenshot(path=os.path.join(SHOTS, '10-手机传图二维码.png'))
-                a.click('#dlg-phone [data-close]')
 
                 b = opened(ph, link, wait_log=False)                            # 手机扫码打开的那一页
                 b.wait_for_function('() => document.querySelector("#pcstate").textContent.includes("电脑在线")', timeout=15000)
+                a.wait_for_selector('#dlg-phone:not([open])', state='attached', timeout=15000)   # 手机一连上，二维码自己收起来，不用人点
+                assert '📱 手机连上了，二维码收起来了' in logs_of(a), logs_of(a)
                 b.set_input_files('#files', make_images(os.path.join(WORK, 'ph'), 3, start=170))
                 b.wait_for_function('() => document.querySelector("#st").textContent.includes("电脑收齐 3 张")', timeout=30000)
                 a.wait_for_function('() => document.querySelector("#status").textContent.startsWith("干完")', timeout=60000)

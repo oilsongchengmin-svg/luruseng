@@ -1143,9 +1143,16 @@ function phoneBatch(batch, got, total) {        // 手机这一趟收齐了（�
   if (!S.busy) start(true);
 }
 
+function phoneJoined() {                       // 手机扫码连上了：二维码自己收起来，不用人点
+  const dlg = $('#dlg-phone');
+  if (!dlg.open) return;
+  dlg.close();
+  log('📱 手机连上了，二维码收起来了：拍完一传，这边收齐自己开工');
+}
+
 function openInbox() {
   if (S.inbox) S.inbox.close();
-  S.inbox = new Inbox(S.pair, { onFile: phoneFile, onBatch: phoneBatch, onState: phoneState, log });
+  S.inbox = new Inbox(S.pair, { onFile: phoneFile, onBatch: phoneBatch, onState: phoneState, onPhone: phoneJoined, log });
   S.inbox.open();
 }
 

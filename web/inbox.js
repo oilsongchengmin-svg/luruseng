@@ -5,9 +5,9 @@ import * as P from './pair.js';
 export const STALL_MS = 120_000;                  // 一趟传到一半没动静多久，就先干收到的
 
 export class Inbox {
-  // onFile(file, info) -> Promise（照片存好了才 resolve）；onBatch(batch, got, total)；onState(state, why)
-  constructor(pair, { onFile, onBatch, onState = () => {}, log = () => {}, stall = STALL_MS }) {
-    Object.assign(this, { pair, onFile, onBatch, onState, log, stall });
+  // onFile(file, info) -> Promise（照片存好了才 resolve）；onBatch(batch, got, total)；onState(state, why)；onPhone()：有手机连上了
+  constructor(pair, { onFile, onBatch, onState = () => {}, onPhone = () => {}, log = () => {}, stall = STALL_MS }) {
+    Object.assign(this, { pair, onFile, onBatch, onState, onPhone, log, stall });
     this.seen = new Set();                        // 取过的（hello 和 new 可能报同一张）
     this.batches = new Map();                     // batch -> {total, got:Set(seq), timer, done}
     this.chain = Promise.resolve();               // 一张一张取：电脑内存也省着用
@@ -29,6 +29,7 @@ export class Inbox {
   message(m) {
     if (m.t === 'hello') for (const it of m.items || []) this.queue(it);
     else if (m.t === 'new' && m.item) this.queue(m.item);
+    else if (m.t === 'phone' && m.on) this.onPhone();
   }
 
   queue(item) {

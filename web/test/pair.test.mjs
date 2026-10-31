@@ -88,6 +88,15 @@ test('inbox: a trip that stalls halfway still gets worked after the wait; garbag
   ib.close();
 });
 
+test('inbox: a phone connecting is passed on (the PC closes its QR code by itself)', () => {
+  let joined = 0;
+  const ib = new Inbox(P.newPair(), { onFile: async () => {}, onBatch: () => {}, onPhone: () => joined++ });
+  ib.message({ t: 'phone', on: true });
+  ib.message({ t: 'pc', on: true });
+  assert.equal(joined, 1);
+  ib.close();
+});
+
 test('inbox: tells the phone how it is going, at most every 1.5 s, the last word always gets out', async () => {
   const p = P.newPair();
   const relay = fakeRelay(p);
